@@ -1,41 +1,36 @@
 # MiraOutposts
 
-Faction-controlled capture objectives for Paper 1.21.11 / Java 21.
+MiraOutposts provides faction-controlled capture objectives for the Mira Paper server suite. Outposts are persistent world locations that factions can contest and capture to gain configurable server bonuses.
 
-## Current release
+## Download
 
-**v0.1.0**
+[**Download MiraOutposts v0.1.0**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.1.0/MiraOutposts-0.1.0.jar)
 
-Direct download:
-https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.1.0/MiraOutposts-0.1.0.jar
+## Requirements / Dependencies
 
-All releases:
-https://github.com/FiveSOCE/Mira-Outposts/releases
+- Paper 1.21.11
+- Java 21
+- MiraFactions optional/recommended as the faction identity source
+- MiraBoosters optional integration
 
-## Features
+## How MiraOutposts Works
 
-- Persistent outpost definitions and faction ownership
-- MiraFactions-backed faction identity
-- Radius-based capture zones
-- Configurable capture duration
-- Contested capture handling
-- Global capture announcements
-- Generic held-outpost multiplier channels such as `shop_sell`, `spawner_rate` or other ecosystem bonuses
-- Multipliers exposed through a public Bukkit ServicesManager API
+Each outpost has a persistent ID, world location, capture radius, capture duration and reward multiplier channel. Players from a faction enter the capture radius and remain in control long enough to complete the capture. If competing factions are present, the objective becomes contested and capture progress is prevented or interrupted according to the outpost logic.
+
+Ownership is persisted and successful captures are announced globally. An owned outpost can expose a generic multiplier such as `shop_sell`, `spawner_rate` or another ecosystem-defined channel. Other Mira plugins can consume these values through the public Bukkit ServicesManager API without duplicating capture logic.
 
 ## Commands
 
-- `/outpost list`
-- `/outpost info <id>`
-- `/outpost create <id> <radius> <captureSeconds> <channel> <multiplier>`
-- `/outpost remove <id>`
+| Command | Permission | What it does |
+| --- | --- | --- |
+| `/outpost list` | `miraoutposts.use` | Lists configured outposts and their ownership/state. |
+| `/outpost info <id>` | `miraoutposts.use` | Shows details for a specific outpost. |
+| `/outpost create <id> <radius> <captureSeconds> <channel> <multiplier>` | `miraoutposts.admin` | Creates an outpost at the administrator's current location. |
+| `/outpost remove <id>` | `miraoutposts.admin` | Removes an outpost definition. |
 
-## Integration
+## Permissions
 
-MiraOutposts uses MiraFactions as the faction identity source when installed. Other Mira plugins can consume the public multiplier API without duplicating capture logic.
-
-## Build
-
-`./gradlew build`
-
-Output: `build/libs/MiraOutposts-0.1.0.jar`
+| Permission | Default | What it does |
+| --- | --- | --- |
+| `miraoutposts.use` | Everyone | Allows normal outpost listing and inspection. |
+| `miraoutposts.admin` | OP | Allows creating and removing outposts. |
