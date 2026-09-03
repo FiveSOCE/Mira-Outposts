@@ -1,0 +1,30 @@
+name: Release v0.1.0
+on:
+  push:
+    paths:
+      - '.github/workflows/release-v0.1.0.yml'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tested source
+        uses: actions/checkout@v4
+        with:
+          ref: 312c0d2ad59aeb715c64e2f4489770ee73d5f2e4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        run: gradle build
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          name: MiraOutposts v0.1.0
+          target_commitish: 312c0d2ad59aeb715c64e2f4489770ee73d5f2e4
+          body: Initial MiraOutposts release with faction capture objectives, persistent ownership, contested capture progress and generic held-outpost multiplier channels.
+          files: build/libs/MiraOutposts-0.1.0.jar
