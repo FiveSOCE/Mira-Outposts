@@ -1,6 +1,7 @@
 package gg.mira.outposts;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -17,6 +18,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 public final class MiraOutpostsPlugin extends JavaPlugin {
+    private static final String PREFIX = "&5&lMira &8>> &r";
     private final Map<String, Outpost> outposts = new LinkedHashMap<>();
     private final Map<String, Capture> captures = new HashMap<>();
     private File file;
@@ -33,34 +35,34 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("list")) {
-            sender.sendMessage("§6Mira Outposts");
-            for (Outpost o : outposts.values()) sender.sendMessage("§e" + o.id + " §7owner §f" + (o.ownerName == null ? "Unclaimed" : o.ownerName) + " §7buff §f" + o.channel + " x" + o.multiplier);
+            msg(sender, "&6Mira Outposts");
+            for (Outpost o : outposts.values()) msg(sender, "&e" + o.id + " &7owner &f" + (o.ownerName == null ? "Unclaimed" : o.ownerName) + " &7buff &f" + o.channel + " x" + o.multiplier);
             return true;
         }
         if (args[0].equalsIgnoreCase("create")) {
-            if (!sender.hasPermission("miraoutposts.admin") || !(sender instanceof Player player)) { sender.sendMessage("§cAdmin player required."); return true; }
-            if (args.length < 6) { sender.sendMessage("§cUsage: /outpost create <id> <radius> <captureSeconds> <channel> <multiplier>"); return true; }
+            if (!sender.hasPermission("miraoutposts.admin") || !(sender instanceof Player player)) { msg(sender, "&cAdmin player required."); return true; }
+            if (args.length < 6) { msg(sender, "&cUsage: /outpost create <id> <radius> <captureSeconds> <channel> <multiplier>"); return true; }
             try {
                 String id = sanitize(args[1]); int radius = Math.max(3, Integer.parseInt(args[2])); int seconds = Math.max(5, Integer.parseInt(args[3])); double multiplier = Math.max(1D, Double.parseDouble(args[5]));
                 Location l = player.getLocation(); Outpost o = new Outpost(id, l.getWorld().getName(), l.getX(), l.getY(), l.getZ(), radius, seconds, args[4].toLowerCase(Locale.ROOT), multiplier, null, null);
-                outposts.put(id, o); save(); sender.sendMessage("§aCreated outpost " + id + ".");
-            } catch (NumberFormatException ex) { sender.sendMessage("§cInvalid radius, capture seconds or multiplier."); }
+                outposts.put(id, o); save(); msg(sender, "&aCreated outpost " + id + ".");
+            } catch (NumberFormatException ex) { msg(sender, "&cInvalid radius, capture seconds or multiplier."); }
             return true;
         }
         if (args[0].equalsIgnoreCase("remove")) {
-            if (!sender.hasPermission("miraoutposts.admin") || args.length < 2) { sender.sendMessage("§cUsage: /outpost remove <id>"); return true; }
-            Outpost removed = outposts.remove(sanitize(args[1])); captures.remove(sanitize(args[1])); if (removed == null) sender.sendMessage("§cOutpost not found."); else { save(); sender.sendMessage("§aOutpost removed."); } return true;
+            if (!sender.hasPermission("miraoutposts.admin") || args.length < 2) { msg(sender, "&cUsage: /outpost remove <id>"); return true; }
+            Outpost removed = outposts.remove(sanitize(args[1])); captures.remove(sanitize(args[1])); if (removed == null) msg(sender, "&cOutpost not found."); else { save(); msg(sender, "&aOutpost removed."); } return true;
         }
         if (args[0].equalsIgnoreCase("info")) {
-            if (args.length < 2) { sender.sendMessage("§cUsage: /outpost info <id>"); return true; }
-            Outpost o = outposts.get(sanitize(args[1])); if (o == null) { sender.sendMessage("§cOutpost not found."); return true; }
+            if (args.length < 2) { msg(sender, "&cUsage: /outpost info <id>"); return true; }
+            Outpost o = outposts.get(sanitize(args[1])); if (o == null) { msg(sender, "&cOutpost not found."); return true; }
             Capture c = captures.get(o.id);
-            sender.sendMessage("§6" + o.id + " §7Owner: §f" + (o.ownerName == null ? "Unclaimed" : o.ownerName));
-            sender.sendMessage("§7Radius: §f" + o.radius + " §7Capture: §f" + o.captureSeconds + "s §7Buff: §f" + o.channel + " x" + o.multiplier);
-            if (c != null) sender.sendMessage("§7Capturing: §f" + c.factionName + " §7Progress: §f" + c.seconds + "/" + o.captureSeconds + "s");
+            msg(sender, "&6" + o.id + " &7Owner: &f" + (o.ownerName == null ? "Unclaimed" : o.ownerName));
+            msg(sender, "&7Radius: &f" + o.radius + " &7Capture: &f" + o.captureSeconds + "s &7Buff: &f" + o.channel + " x" + o.multiplier);
+            if (c != null) msg(sender, "&7Capturing: &f" + c.factionName + " &7Progress: &f" + c.seconds + "/" + o.captureSeconds + "s");
             return true;
         }
-        sender.sendMessage("§7/outpost list, info <id>, create ..., remove <id>"); return true;
+        msg(sender, "&7/outpost list, info <id>, create ..., remove <id>"); return true;
     }
 
     private void tick() {
@@ -83,7 +85,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
             if (c.seconds >= o.captureSeconds) {
                 Outpost captured = new Outpost(o.id, o.world, o.x, o.y, o.z, o.radius, o.captureSeconds, o.channel, o.multiplier, factionId, factionName);
                 outposts.put(o.id, captured); captures.remove(o.id); save();
-                Bukkit.broadcastMessage("§6[Outpost] §f" + factionName + " §7captured §e" + o.id + " §7and now holds §f" + o.channel + " x" + o.multiplier + "§7.");
+                broadcast("&6[Outpost] &f" + factionName + " &7captured &e" + o.id + " &7and now holds &f" + o.channel + " x" + o.multiplier + "&7.");
             }
         }
     }
@@ -122,6 +124,8 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         @Override public List<OutpostView> heldBy(UUID factionId) { return outposts.values().stream().filter(o -> factionId != null && factionId.equals(o.ownerId)).map(MiraOutpostsPlugin::view).toList(); }
     }
 
+    private void msg(CommandSender sender, String raw) { sender.sendMessage(ChatColor.translateAlternateColorCodes('&', PREFIX + raw)); }
+    private void broadcast(String raw) { Bukkit.broadcastMessage(ChatColor.translateAlternateColorCodes('&', PREFIX + raw)); }
     private static OutpostView view(Outpost o) { return new OutpostView(o.id,o.world,o.x,o.y,o.z,o.radius,o.channel,o.multiplier,o.ownerId,o.ownerName); }
     private static String sanitize(String s) { return s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_"); }
 
