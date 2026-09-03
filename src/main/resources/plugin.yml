@@ -1,0 +1,12 @@
+name: MiraOutposts
+version: 0.1.0
+main: gg.mira.outposts.MiraOutpostsPlugin
+api-version: '1.21'
+author: FiveSOCE
+softdepend: [MiraFactions, MiraBoosters]
+commands:
+  outpost:
+    description: Manage and inspect outposts
+permissions:
+  miraoutposts.use: {default: true}
+  miraoutposts.admin: {default: op}
