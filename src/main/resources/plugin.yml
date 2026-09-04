@@ -1,12 +1,16 @@
 name: MiraOutposts
-version: 0.1.0
+version: 0.1.1
 main: gg.mira.outposts.MiraOutpostsPlugin
 api-version: '1.21'
 author: FiveSOCE
-softdepend: [MiraFactions, MiraBoosters]
+description: Persistent faction capture objectives and ecosystem multiplier authority.
+depend: [MiraCore, MiraFactions]
+softdepend: [MiraBoosters]
 commands:
   outpost:
     description: Manage and inspect outposts
+    usage: /outpost <list|info|create|remove>
+    permission: miraoutposts.use
 permissions:
   miraoutposts.use: {default: true}
   miraoutposts.admin: {default: op}
