@@ -2,10 +2,20 @@ capture:
   reset-when-empty: true
   reset-when-contested: true
 
+defaults:
+  capture-seconds: 30
+  channel: spawner_rate
+  multiplier: 1.25
+
 creation:
-  max-radius: 128
+  max-area-blocks: 262144
+  max-side-length: 512
   max-capture-seconds: 3600
   max-multiplier: 100.0
+
+schedule:
+  # Automatic runs stop after this many minutes unless changed per outpost in the GUI.
+  default-run-minutes: 30
 
 api:
   max-effective-multiplier: 1000.0
