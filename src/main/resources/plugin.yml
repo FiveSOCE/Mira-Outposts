@@ -1,16 +1,18 @@
 name: MiraOutposts
-version: 0.1.1
+version: 0.2.0
 main: gg.mira.outposts.MiraOutpostsPlugin
 api-version: '1.21'
 author: FiveSOCE
-description: Persistent faction capture objectives and ecosystem multiplier authority.
-depend: [MiraCore, MiraFactions]
+description: FAWE-defined scheduled faction capture events with GUI administration and live boss bars.
+depend: [MiraCore, MiraFactions, FastAsyncWorldEdit]
 softdepend: [MiraBoosters]
 commands:
   outpost:
-    description: Manage and inspect outposts
-    usage: /outpost <list|info|create|remove>
+    description: Open and manage MiraOutposts
+    usage: /outpost [gui|info <id>|start <id>|stop <id>]
     permission: miraoutposts.use
 permissions:
-  miraoutposts.use: {default: true}
-  miraoutposts.admin: {default: op}
+  miraoutposts.use:
+    default: true
+  miraoutposts.admin:
+    default: op
