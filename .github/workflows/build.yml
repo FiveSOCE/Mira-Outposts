@@ -27,19 +27,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MiraOutposts-0.1.1
-          path: build/libs/MiraOutposts-0.1.1.jar
+          name: MiraOutposts-0.2.0
+          path: build/libs/MiraOutposts-0.2.0.jar
           if-no-files-found: error
 
-      - name: Publish v0.1.1 release if missing
+      - name: Publish v0.2.0 release if missing
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view v0.1.1 >/dev/null 2>&1; then
-            gh release create v0.1.1 \
-              build/libs/MiraOutposts-0.1.1.jar \
+          if ! gh release view v0.2.0 >/dev/null 2>&1; then
+            gh release create v0.2.0 \
+              build/libs/MiraOutposts-0.2.0.jar \
               --target "${{ github.sha }}" \
-              --title "MiraOutposts v0.1.1" \
-              --notes "Adds direct MiraFactions 0.2.8 capture identity, Core audit/service integration, validated objective creation, typed capture events, capture-progress API and clean combined player multipliers with optional MiraBoosters."
+              --title "MiraOutposts v0.2.0" \
+              --notes "Major overhaul: FAWE cuboid region creation, GUI-first administration, working live boss bars, channel picker, Start/Stop/Start All/Stop All controls, persistent recurring schedules with automatic run lengths, old radius-data migration and expanded README documentation."
           fi
