@@ -226,6 +226,37 @@ public final class OutpostGuiService {
         plugin.msg(player, message + " &7Type &fcancel &7to abort.");
     }
 
+    MiraOutpostsPlugin plugin() { return plugin; }
+
+    String outpostAt(int page, int rawSlot) {
+        int index = -1;
+        for (int i = 0; i < LIST_SLOTS.length; i++) {
+            if (LIST_SLOTS[i] == rawSlot) { index = i; break; }
+        }
+        if (index < 0) return null;
+        List<MiraOutpostsPlugin.Outpost> all = plugin.outpostsInternal().stream()
+                .sorted(Comparator.comparing(MiraOutpostsPlugin.Outpost::id)).toList();
+        int actual = page * LIST_SLOTS.length + index;
+        return actual >= 0 && actual < all.size() ? all.get(actual).id() : null;
+    }
+
+    String channelAt(int rawSlot) {
+        int[] slots = {10,12,14,16,28};
+        for (int i = 0; i < slots.length; i++) {
+            if (slots[i] == rawSlot && i < MiraOutpostsPlugin.CHANNELS.size()) {
+                return MiraOutpostsPlugin.CHANNELS.get(i).id();
+            }
+        }
+        return null;
+    }
+
+    Long scheduleAt(int rawSlot) {
+        int[] slots = {10,11,12,13,14,15,16,22};
+        long[] seconds = {0L,1800L,3600L,7200L,14400L,21600L,43200L,86400L};
+        for (int i = 0; i < slots.length; i++) if (slots[i] == rawSlot) return seconds[i];
+        return null;
+    }
+
     PendingInput pending(UUID player) { return pending.get(player); }
     void clearPending(UUID player) { pending.remove(player); }
 
