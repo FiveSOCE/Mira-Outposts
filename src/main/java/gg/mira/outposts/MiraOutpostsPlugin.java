@@ -5,17 +5,18 @@ import com.mira.core.api.MiraCoreProvider;
 import com.mira.core.api.ModuleHealth;
 import com.mira.factions.api.MiraFactionsApi;
 import gg.mira.outposts.api.event.OutpostCapturedEvent;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.World;
+import org.bukkit.*;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
-import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,8 +24,17 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 public final class MiraOutpostsPlugin extends JavaPlugin {
+    public static final List<ChannelExample> CHANNELS = List.of(
+            new ChannelExample("xp", Material.EXPERIENCE_BOTTLE, "XP multiplier", "Used by XP-aware Mira integrations."),
+            new ChannelExample("mob_drops", Material.ROTTEN_FLESH, "Mob drops", "Multiplier channel for mob-drop rewards."),
+            new ChannelExample("shop_sell", Material.EMERALD, "Shop sell value", "Used by shop/economy integrations."),
+            new ChannelExample("crate_chance", Material.TRIPWIRE_HOOK, "Crate chance", "Multiplier channel for crate chance integrations."),
+            new ChannelExample("spawner_rate", Material.SPAWNER, "Spawner production", "Used by MiraSpawners production.")
+    );
+
     private final Map<String, Outpost> outposts = new LinkedHashMap<>();
     private final Map<String, Capture> captures = new HashMap<>();
+    private final Map<String, BossBar> bossBars = new HashMap<>();
 
     private File file;
     private MiraCore core;
@@ -33,6 +43,8 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
     private Object boostersApi;
     private Method boostersMultiplierMethod;
     private long lastBoosterResolveAttempt;
+    private FaweSelectionService fawe;
+    private OutpostGuiService gui;
 
     @Override
     public void onEnable() {
@@ -49,22 +61,28 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         file = new File(getDataFolder(), "outposts.yml");
         load();
 
+        fawe = new FaweSelectionService();
+        gui = new OutpostGuiService(this, fawe);
+        getServer().getPluginManager().registerEvents(new OutpostGuiListener(gui), this);
+
         api = new OutpostsApiImpl();
         getServer().getServicesManager().register(OutpostsApi.class, api, this, ServicePriority.Normal);
         core.services().register(OutpostsApi.class, api);
         core.modules().register(this, "MiraOutposts");
         core.modules().setHealth(this, ModuleHealth.HEALTHY,
-                "Faction capture objectives, persistent ownership and multiplier API ready");
+                "FAWE regions, GUI administration, scheduled capture runs, boss bars and multiplier API ready");
 
         resolveBoostersApi();
-
         getServer().getScheduler().runTaskTimer(this, this::tick, 20L, 20L);
+
         getLogger().info("MiraOutposts v" + getPluginMeta().getVersion()
                 + " enabled with " + outposts.size() + " outpost(s).");
     }
 
     @Override
     public void onDisable() {
+        for (BossBar bar : bossBars.values()) bar.removeAll();
+        bossBars.clear();
         save();
         getServer().getServicesManager().unregisterAll(this);
         if (core != null) {
@@ -76,233 +94,315 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
-        String action = args.length == 0 ? "list" : args[0].toLowerCase(Locale.ROOT);
-
-        switch (action) {
-            case "list" -> {
-                msg(sender, "&6Mira Outposts");
-                if (outposts.isEmpty()) {
-                    msg(sender, "&7No outposts configured.");
-                    return true;
-                }
-                for (Outpost outpost : outposts.values()) {
-                    Capture capture = captures.get(outpost.id());
-                    String owner = outpost.ownerName() == null ? "Unclaimed" : outpost.ownerName();
-                    String state = capture == null ? "" : " &8| &e" + capture.factionName()
-                            + " " + capture.seconds() + "/" + outpost.captureSeconds() + "s";
-                    msg(sender, "&e" + outpost.id() + " &8| &7owner &f" + owner
-                            + " &8| &7" + outpost.channel() + " x" + format(outpost.multiplier()) + state);
-                }
-                return true;
-            }
-            case "info" -> {
-                if (args.length < 2) {
-                    msg(sender, "&eUsage: /outpost info <id>");
-                    return true;
-                }
-                Outpost outpost = outposts.get(sanitizeId(args[1]));
-                if (outpost == null) {
-                    msg(sender, "&cOutpost not found.");
-                    return true;
-                }
-                Capture capture = captures.get(outpost.id());
-                msg(sender, "&6" + outpost.id() + " &7Owner: &f"
-                        + (outpost.ownerName() == null ? "Unclaimed" : outpost.ownerName()));
-                msg(sender, "&7World: &f" + outpost.world() + " &7Center: &f"
-                        + format(outpost.x()) + ", " + format(outpost.y()) + ", " + format(outpost.z()));
-                msg(sender, "&7Radius: &f" + outpost.radius()
-                        + " &7Capture: &f" + outpost.captureSeconds() + "s"
-                        + " &7Buff: &f" + outpost.channel() + " x" + format(outpost.multiplier()));
-                if (capture != null) {
-                    msg(sender, "&7Capturing: &f" + capture.factionName()
-                            + " &7Progress: &f" + capture.seconds() + "/" + outpost.captureSeconds() + "s");
-                }
-                return true;
-            }
-            case "create" -> {
-                if (!sender.hasPermission("miraoutposts.admin") || !(sender instanceof Player player)) {
-                    msg(sender, "&cAn admin player is required.");
-                    return true;
-                }
-                if (args.length < 6) {
-                    msg(sender, "&eUsage: /outpost create <id> <radius> <captureSeconds> <channel> <multiplier>");
-                    return true;
-                }
-                if (factions.isSafeZone(player.getLocation())) {
-                    msg(sender, "&cOutposts cannot be created inside a SafeZone.");
-                    return true;
-                }
-
-                String id = sanitizeId(args[1]);
-                if (id.isBlank()) {
-                    msg(sender, "&cOutpost ID is invalid.");
-                    return true;
-                }
-                if (outposts.containsKey(id)) {
-                    msg(sender, "&cAn outpost with that ID already exists.");
-                    return true;
-                }
-
-                int radius;
-                int seconds;
-                double multiplier;
-                try {
-                    radius = Integer.parseInt(args[2]);
-                    seconds = Integer.parseInt(args[3]);
-                    multiplier = Double.parseDouble(args[5]);
-                } catch (NumberFormatException exception) {
-                    msg(sender, "&cInvalid radius, capture seconds or multiplier.");
-                    return true;
-                }
-
-                int maxRadius = Math.max(3, getConfig().getInt("creation.max-radius", 128));
-                int maxCaptureSeconds = Math.max(5, getConfig().getInt("creation.max-capture-seconds", 3600));
-                double maxMultiplier = Math.max(1D, getConfig().getDouble("creation.max-multiplier", 100D));
-
-                if (radius < 3 || radius > maxRadius) {
-                    msg(sender, "&cRadius must be between 3 and " + maxRadius + ".");
-                    return true;
-                }
-                if (seconds < 5 || seconds > maxCaptureSeconds) {
-                    msg(sender, "&cCapture time must be between 5 and " + maxCaptureSeconds + " seconds.");
-                    return true;
-                }
-                if (!Double.isFinite(multiplier) || multiplier < 1D || multiplier > maxMultiplier) {
-                    msg(sender, "&cMultiplier must be finite and between 1 and " + maxMultiplier + ".");
-                    return true;
-                }
-
-                String channel = sanitizeChannel(args[4]);
-                if (channel.isBlank()) {
-                    msg(sender, "&cMultiplier channel is invalid.");
-                    return true;
-                }
-
-                Location location = player.getLocation();
-                Outpost outpost = new Outpost(id, location.getWorld().getName(),
-                        location.getX(), location.getY(), location.getZ(),
-                        radius, seconds, channel, multiplier, null, null);
-                outposts.put(id, outpost);
-                save();
-
-                core.audit().record("MiraOutposts", "OUTPOST_CREATED",
-                        player.getUniqueId(), player.getName(), id, "Outpost created",
-                        Map.of(
-                                "world", outpost.world(),
-                                "radius", Integer.toString(radius),
-                                "captureSeconds", Integer.toString(seconds),
-                                "channel", channel,
-                                "multiplier", Double.toString(multiplier)
-                        ));
-
-                msg(sender, "&aCreated outpost &f" + id + "&a.");
-                return true;
-            }
-            case "remove" -> {
-                if (!sender.hasPermission("miraoutposts.admin") || args.length < 2) {
-                    msg(sender, "&eUsage: /outpost remove <id>");
-                    return true;
-                }
-
-                String id = sanitizeId(args[1]);
-                Outpost removed = outposts.remove(id);
-                captures.remove(id);
-                if (removed == null) {
-                    msg(sender, "&cOutpost not found.");
-                    return true;
-                }
-
-                save();
-                core.audit().record("MiraOutposts", "OUTPOST_REMOVED",
-                        sender instanceof Player player ? player.getUniqueId() : null,
-                        sender.getName(), id, "Outpost removed",
-                        Map.of("previousOwner", removed.ownerId() == null ? "unclaimed" : removed.ownerId().toString()));
-
-                msg(sender, "&aOutpost removed.");
-                return true;
-            }
-            default -> {
-                msg(sender, "&7/outpost <list|info <id>|create ...|remove <id>>");
-                return true;
-            }
+        if (!(sender instanceof Player player)) {
+            msg(sender, "&cMiraOutposts administration is player-GUI based.");
+            return true;
         }
+        if (!player.hasPermission("miraoutposts.use")) {
+            msg(player, "&cYou do not have permission.");
+            return true;
+        }
+
+        if (args.length == 0 || args[0].equalsIgnoreCase("gui")) {
+            gui.openMain(player, 0);
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("info") && args.length >= 2) {
+            Outpost outpost = outposts.get(sanitizeId(args[1]));
+            if (outpost == null) {
+                msg(player, "&cOutpost not found.");
+                return true;
+            }
+            gui.openEditor(player, outpost.id());
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("start") && args.length >= 2 && player.hasPermission("miraoutposts.admin")) {
+            if (!startOutpost(sanitizeId(args[1]), false, player)) msg(player, "&cCould not start that outpost.");
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("stop") && args.length >= 2 && player.hasPermission("miraoutposts.admin")) {
+            if (!stopOutpost(sanitizeId(args[1]), player, false)) msg(player, "&cThat outpost is not running.");
+            return true;
+        }
+
+        gui.openMain(player, 0);
+        return true;
     }
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            List<String> values = new ArrayList<>(List.of("list", "info"));
-            if (sender.hasPermission("miraoutposts.admin")) values.addAll(List.of("create", "remove"));
+            List<String> values = new ArrayList<>(List.of("gui", "info"));
+            if (sender.hasPermission("miraoutposts.admin")) values.addAll(List.of("start", "stop"));
             return complete(args[0], values);
         }
-        if (args.length == 2 && (args[0].equalsIgnoreCase("info") || args[0].equalsIgnoreCase("remove"))) {
+        if (args.length == 2 && List.of("info", "start", "stop").contains(args[0].toLowerCase(Locale.ROOT))) {
             return complete(args[1], outposts.keySet());
         }
         return List.of();
     }
 
     private void tick() {
+        long now = System.currentTimeMillis();
+        processSchedules(now);
+
         boolean resetEmpty = getConfig().getBoolean("capture.reset-when-empty", true);
         boolean resetContested = getConfig().getBoolean("capture.reset-when-contested", true);
 
         for (Outpost outpost : new ArrayList<>(outposts.values())) {
+            if (!outpost.running()) {
+                hideBossBar(outpost.id());
+                continue;
+            }
+
             World world = Bukkit.getWorld(outpost.world());
-            if (world == null) continue;
+            if (world == null) {
+                hideBossBar(outpost.id());
+                continue;
+            }
 
-            Location center = new Location(world, outpost.x(), outpost.y(), outpost.z());
+            List<Player> inside = world.getPlayers().stream()
+                    .filter(player -> !player.isDead() && outpost.contains(player.getLocation()))
+                    .toList();
+
             Map<UUID, String> factionsPresent = new LinkedHashMap<>();
-
-            for (Player player : world.getPlayers()) {
-                if (player.isDead() || player.getLocation().distanceSquared(center)
-                        > (double) outpost.radius() * outpost.radius()) continue;
-
+            for (Player player : inside) {
                 Optional<UUID> factionId = factions.factionId(player.getUniqueId());
                 if (factionId.isEmpty()) continue;
-
-                String factionName = factions.factionName(player.getUniqueId())
-                        .orElse(factionId.get().toString());
-                factionsPresent.putIfAbsent(factionId.get(), factionName);
-            }
-
-            if (factionsPresent.isEmpty()) {
-                if (resetEmpty) captures.remove(outpost.id());
-                continue;
-            }
-            if (factionsPresent.size() > 1) {
-                if (resetContested) captures.remove(outpost.id());
-                continue;
-            }
-
-            UUID factionId = factionsPresent.keySet().iterator().next();
-            String factionName = factionsPresent.get(factionId);
-
-            if (factionId.equals(outpost.ownerId())) {
-                captures.remove(outpost.id());
-                continue;
+                factionsPresent.putIfAbsent(factionId.get(),
+                        factions.factionName(player.getUniqueId()).orElse(factionId.get().toString()));
             }
 
             Capture current = captures.get(outpost.id());
-            if (current == null || !current.factionId().equals(factionId)) {
-                current = new Capture(factionId, factionName, 0);
+            BarState barState;
+
+            if (factionsPresent.isEmpty()) {
+                if (resetEmpty) captures.remove(outpost.id());
+                barState = new BarState("UNCLAIMED", BarColor.WHITE, 0D);
+            } else if (factionsPresent.size() > 1) {
+                if (resetContested) captures.remove(outpost.id());
+                barState = new BarState("CONTESTED", BarColor.RED, 1D);
+            } else {
+                UUID factionId = factionsPresent.keySet().iterator().next();
+                String factionName = factionsPresent.get(factionId);
+
+                if (factionId.equals(outpost.ownerId())) {
+                    captures.remove(outpost.id());
+                    barState = new BarState("CONTROLLED BY " + factionName, BarColor.GREEN, 1D);
+                } else {
+                    if (current == null || !current.factionId().equals(factionId)) {
+                        current = new Capture(factionId, factionName, 0);
+                    }
+                    Capture progressed = new Capture(current.factionId(), current.factionName(), current.seconds() + 1);
+                    captures.put(outpost.id(), progressed);
+                    double progress = Math.min(1D, (double) progressed.seconds() / outpost.captureSeconds());
+                    barState = new BarState(factionName + " CAPTURING "
+                            + progressed.seconds() + "/" + outpost.captureSeconds() + "s",
+                            BarColor.YELLOW, progress);
+
+                    if (progressed.seconds() >= outpost.captureSeconds()) {
+                        completeCapture(outpost, progressed);
+                        Outpost updated = outposts.get(outpost.id());
+                        barState = new BarState("CONTROLLED BY " + progressed.factionName(), BarColor.GREEN, 1D);
+                        outpost = updated;
+                    }
+                }
             }
 
-            Capture progressed = new Capture(current.factionId(), current.factionName(), current.seconds() + 1);
-            captures.put(outpost.id(), progressed);
+            updateBossBar(outpost, inside, barState);
+        }
+    }
 
-            if (progressed.seconds() >= outpost.captureSeconds()) {
-                completeCapture(outpost, progressed);
+    private void processSchedules(long now) {
+        for (Outpost outpost : new ArrayList<>(outposts.values())) {
+            if (outpost.running() && outpost.scheduledStopAt() > 0L && now >= outpost.scheduledStopAt()) {
+                stopOutpost(outpost.id(), null, true);
+                continue;
+            }
+
+            if (!outpost.running() && outpost.scheduleIntervalSeconds() > 0L
+                    && outpost.nextStartAt() > 0L && now >= outpost.nextStartAt()) {
+                startOutpost(outpost.id(), true, null);
             }
         }
     }
 
-    private void completeCapture(Outpost previous, Capture capture) {
-        Outpost captured = new Outpost(previous.id(), previous.world(),
-                previous.x(), previous.y(), previous.z(),
-                previous.radius(), previous.captureSeconds(),
-                previous.channel(), previous.multiplier(),
-                capture.factionId(), capture.factionName());
+    boolean startOutpost(String id, boolean scheduled, Player actor) {
+        Outpost current = outposts.get(id);
+        if (current == null || current.running()) return false;
 
+        long now = System.currentTimeMillis();
+        long scheduledStop = scheduled && current.scheduledRunSeconds() > 0L
+                ? now + current.scheduledRunSeconds() * 1000L : 0L;
+        long next = current.scheduleIntervalSeconds() > 0L
+                ? now + current.scheduleIntervalSeconds() * 1000L : 0L;
+
+        Outpost updated = current.withRuntime(true, null, null, next, scheduledStop);
+        outposts.put(id, updated);
+        captures.remove(id);
+        save();
+
+        audit("OUTPOST_STARTED", actor, updated, Map.of(
+                "scheduled", Boolean.toString(scheduled),
+                "nextStartAt", Long.toString(next),
+                "scheduledStopAt", Long.toString(scheduledStop)));
+        broadcast("&6[Outpost] &e" + id + " &7is now active and ready to capture.");
+        return true;
+    }
+
+    boolean stopOutpost(String id, Player actor, boolean scheduled) {
+        Outpost current = outposts.get(id);
+        if (current == null || !current.running()) return false;
+
+        Outpost updated = current.withRuntime(false, current.ownerId(), current.ownerName(),
+                current.nextStartAt(), 0L);
+        outposts.put(id, updated);
+        captures.remove(id);
+        hideBossBar(id);
+        save();
+
+        audit("OUTPOST_STOPPED", actor, updated, Map.of("scheduled", Boolean.toString(scheduled)));
+        broadcast("&6[Outpost] &e" + id + " &7has stopped.");
+        return true;
+    }
+
+    void setSchedule(String id, long intervalSeconds, long runSeconds, Player actor) {
+        Outpost current = outposts.get(id);
+        if (current == null) return;
+        long interval = Math.max(0L, intervalSeconds);
+        long run = Math.max(60L, runSeconds);
+        long next = interval <= 0L ? 0L : System.currentTimeMillis() + interval * 1000L;
+
+        Outpost updated = current.withSchedule(interval, run, next);
+        outposts.put(id, updated);
+        save();
+        audit("OUTPOST_SCHEDULE_CHANGED", actor, updated,
+                Map.of("intervalSeconds", Long.toString(interval), "runSeconds", Long.toString(run)));
+    }
+
+    void updateCaptureSeconds(String id, int seconds, Player actor) {
+        Outpost current = outposts.get(id);
+        if (current == null) return;
+        int safe = Math.max(5, Math.min(getConfig().getInt("creation.max-capture-seconds", 3600), seconds));
+        outposts.put(id, current.withCaptureSeconds(safe));
+        captures.remove(id);
+        save();
+        audit("OUTPOST_CAPTURE_TIME_CHANGED", actor, current, Map.of("seconds", Integer.toString(safe)));
+    }
+
+    void updateMultiplier(String id, double multiplier, Player actor) {
+        Outpost current = outposts.get(id);
+        if (current == null) return;
+        double maximum = Math.max(1D, getConfig().getDouble("creation.max-multiplier", 100D));
+        if (!Double.isFinite(multiplier) || multiplier < 1D || multiplier > maximum) return;
+        outposts.put(id, current.withMultiplier(multiplier));
+        save();
+        audit("OUTPOST_MULTIPLIER_CHANGED", actor, current, Map.of("multiplier", Double.toString(multiplier)));
+    }
+
+    void updateChannel(String id, String channel, Player actor) {
+        Outpost current = outposts.get(id);
+        String safe = sanitizeChannel(channel);
+        if (current == null || safe.isBlank()) return;
+        outposts.put(id, current.withChannel(safe));
+        save();
+        audit("OUTPOST_CHANNEL_CHANGED", actor, current, Map.of("channel", safe));
+    }
+
+    boolean updateRegionFromFawe(String id, Player actor) {
+        Outpost current = outposts.get(id);
+        if (current == null) return false;
+        FaweSelectionService.SelectionResult result = fawe.selection(actor);
+        if (!result.success()) {
+            msg(actor, "&c" + result.error());
+            return false;
+        }
+        if (!validateSelection(actor, result.bounds())) return false;
+
+        FaweSelectionService.SelectionBounds b = result.bounds();
+        outposts.put(id, current.withBounds(b.world(), b.minX(), b.maxX(), b.minZ(), b.maxZ()));
+        captures.remove(id);
+        save();
+        audit("OUTPOST_REGION_CHANGED", actor, current, Map.of(
+                "world", b.world(), "minX", Integer.toString(b.minX()), "maxX", Integer.toString(b.maxX()),
+                "minZ", Integer.toString(b.minZ()), "maxZ", Integer.toString(b.maxZ())));
+        return true;
+    }
+
+    boolean createFromSelection(Player actor, String rawId) {
+        String id = sanitizeId(rawId);
+        if (id.isBlank() || outposts.containsKey(id)) {
+            msg(actor, "&cThat outpost ID is invalid or already exists.");
+            return false;
+        }
+
+        FaweSelectionService.SelectionResult result = fawe.selection(actor);
+        if (!result.success()) {
+            msg(actor, "&c" + result.error());
+            return false;
+        }
+        if (!validateSelection(actor, result.bounds())) return false;
+
+        FaweSelectionService.SelectionBounds b = result.bounds();
+        Outpost outpost = new Outpost(id, b.world(), b.minX(), b.maxX(), b.minZ(), b.maxZ(),
+                getConfig().getInt("defaults.capture-seconds", 30),
+                getConfig().getString("defaults.channel", "spawner_rate"),
+                getConfig().getDouble("defaults.multiplier", 1.25D),
+                null, null, false, 0L,
+                Math.max(60L, getConfig().getLong("schedule.default-run-minutes", 30L) * 60L),
+                0L, 0L);
+        outposts.put(id, outpost);
+        save();
+        audit("OUTPOST_CREATED", actor, outpost, Map.of("source", "FAWE_SELECTION", "area", Long.toString(b.area())));
+        return true;
+    }
+
+    private boolean validateSelection(Player actor, FaweSelectionService.SelectionBounds b) {
+        long maxArea = Math.max(64L, getConfig().getLong("creation.max-area-blocks", 262144L));
+        int maxSide = Math.max(8, getConfig().getInt("creation.max-side-length", 512));
+        if (b.area() > maxArea || b.width() > maxSide || b.depth() > maxSide) {
+            msg(actor, "&cThat selection is too large. Max side " + maxSide + ", max area " + maxArea + " blocks.");
+            return false;
+        }
+
+        World world = Bukkit.getWorld(b.world());
+        if (world == null) {
+            msg(actor, "&cThe selected world is not loaded.");
+            return false;
+        }
+
+        int minChunkX = b.minX() >> 4;
+        int maxChunkX = b.maxX() >> 4;
+        int minChunkZ = b.minZ() >> 4;
+        int maxChunkZ = b.maxZ() >> 4;
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                Location sample = new Location(world, (cx << 4) + 8, world.getSeaLevel(), (cz << 4) + 8);
+                if (factions.isSafeZone(sample)) {
+                    msg(actor, "&cThe FAWE selection overlaps a MiraFactions SafeZone.");
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    boolean removeOutpost(String id, Player actor) {
+        Outpost removed = outposts.remove(id);
+        captures.remove(id);
+        hideBossBar(id);
+        if (removed == null) return false;
+        save();
+        audit("OUTPOST_REMOVED", actor, removed, Map.of());
+        return true;
+    }
+
+    private void completeCapture(Outpost previous, Capture capture) {
+        Outpost captured = previous.withOwner(capture.factionId(), capture.factionName());
         outposts.put(previous.id(), captured);
         captures.remove(previous.id());
         save();
@@ -310,28 +410,51 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         Bukkit.getPluginManager().callEvent(new OutpostCapturedEvent(
                 view(captured), previous.ownerId(), previous.ownerName()));
 
-        core.audit().record("MiraOutposts", "OUTPOST_CAPTURED",
-                null, capture.factionName(), captured.id(), "Outpost captured",
-                Map.of(
-                        "factionId", capture.factionId().toString(),
-                        "factionName", capture.factionName(),
-                        "previousOwner", previous.ownerId() == null ? "unclaimed" : previous.ownerId().toString(),
-                        "channel", captured.channel(),
-                        "multiplier", Double.toString(captured.multiplier())
-                ));
+        audit("OUTPOST_CAPTURED", null, captured, Map.of(
+                "factionId", capture.factionId().toString(),
+                "factionName", capture.factionName(),
+                "previousOwner", previous.ownerId() == null ? "unclaimed" : previous.ownerId().toString()));
 
         broadcast("&6[Outpost] &f" + capture.factionName()
                 + " &7captured &e" + captured.id()
-                + " &7and now holds &f" + captured.channel()
-                + " x" + format(captured.multiplier()) + "&7.");
+                + " &7and controls &f" + captured.channel()
+                + " x" + format(captured.multiplier()) + "&7 while the outpost is active.");
+    }
+
+    private void updateBossBar(Outpost outpost, List<Player> inside, BarState state) {
+        BossBar bar = bossBars.computeIfAbsent(outpost.id(),
+                ignored -> Bukkit.createBossBar("", BarColor.WHITE, BarStyle.SOLID));
+
+        bar.setTitle(ChatColor.translateAlternateColorCodes('&',
+                "&6&l" + outpost.id().toUpperCase(Locale.ROOT)
+                        + " &8- &f" + state.label()
+                        + " &8- &7" + outpost.channel() + " x" + format(outpost.multiplier())));
+        bar.setColor(state.color());
+        bar.setProgress(Math.max(0D, Math.min(1D, state.progress())));
+
+        Set<UUID> wanted = inside.stream().map(Player::getUniqueId).collect(java.util.stream.Collectors.toSet());
+        for (Player viewer : new ArrayList<>(bar.getPlayers())) {
+            if (!wanted.contains(viewer.getUniqueId())) bar.removePlayer(viewer);
+        }
+        for (Player viewer : inside) {
+            if (!bar.getPlayers().contains(viewer)) bar.addPlayer(viewer);
+        }
+        bar.setVisible(!inside.isEmpty());
+    }
+
+    private void hideBossBar(String id) {
+        BossBar bar = bossBars.get(id);
+        if (bar == null) return;
+        bar.removeAll();
+        bar.setVisible(false);
     }
 
     private double factionMultiplier(UUID factionId, String channel) {
         if (factionId == null || channel == null || channel.isBlank()) return 1D;
-
         double result = 1D;
         double maximum = Math.max(1D, getConfig().getDouble("api.max-effective-multiplier", 1000D));
         for (Outpost outpost : outposts.values()) {
+            if (!outpost.running()) continue;
             if (!factionId.equals(outpost.ownerId()) || !outpost.channel().equalsIgnoreCase(channel)) continue;
             result = safeMultiply(result, outpost.multiplier(), maximum);
         }
@@ -340,22 +463,16 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
     private double combinedPlayerMultiplier(UUID player, String channel) {
         double outpostMultiplier = factions.factionId(player)
-                .map(factionId -> factionMultiplier(factionId, channel))
-                .orElse(1D);
-
+                .map(factionId -> factionMultiplier(factionId, channel)).orElse(1D);
         if (!getConfig().getBoolean("boosters.combine-in-player-multiplier", true)) return outpostMultiplier;
-
         double booster = boosterMultiplier(channel, player);
-        double maximum = Math.max(1D, getConfig().getDouble("api.max-effective-multiplier", 1000D));
-        return safeMultiply(outpostMultiplier, booster, maximum);
+        return safeMultiply(outpostMultiplier, booster,
+                Math.max(1D, getConfig().getDouble("api.max-effective-multiplier", 1000D)));
     }
 
     private double boosterMultiplier(String channel, UUID player) {
-        if (boostersApi == null && System.currentTimeMillis() - lastBoosterResolveAttempt > 30_000L) {
-            resolveBoostersApi();
-        }
+        if (boostersApi == null && System.currentTimeMillis() - lastBoosterResolveAttempt > 30_000L) resolveBoostersApi();
         if (boostersApi == null || boostersMultiplierMethod == null) return 1D;
-
         try {
             Object value = boostersMultiplierMethod.invoke(boostersApi, channel, player);
             if (!(value instanceof Number number)) return 1D;
@@ -376,11 +493,8 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
             RegisteredServiceProvider<?> registration =
                     Bukkit.getServicesManager().getRegistration((Class) type);
             if (registration == null || registration.getProvider() == null) return;
-
-            Object provider = registration.getProvider();
-            Method multiplier = type.getMethod("multiplier", String.class, UUID.class);
-            boostersApi = provider;
-            boostersMultiplierMethod = multiplier;
+            boostersApi = registration.getProvider();
+            boostersMultiplierMethod = type.getMethod("multiplier", String.class, UUID.class);
         } catch (ReflectiveOperationException ignored) {
             boostersApi = null;
             boostersMultiplierMethod = null;
@@ -394,14 +508,18 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         double multiplier(UUID factionId, String channel);
         double playerMultiplier(UUID player, String channel);
         List<OutpostView> heldBy(UUID factionId);
+        boolean running(String id);
     }
 
-    public record OutpostView(String id, String world, double x, double y, double z,
-                              int radius, int captureSeconds, String channel, double multiplier,
-                              UUID ownerId, String ownerName) {
-        public Location location() {
-            World resolved = Bukkit.getWorld(world);
-            return resolved == null ? null : new Location(resolved, x, y, z);
+    public record OutpostView(String id, String world, int minX, int maxX, int minZ, int maxZ,
+                              int captureSeconds, String channel, double multiplier,
+                              UUID ownerId, String ownerName, boolean running,
+                              long scheduleIntervalSeconds, long scheduledRunSeconds, long nextStartAt) {
+        public boolean contains(Location location) {
+            return location != null && location.getWorld() != null
+                    && location.getWorld().getName().equals(world)
+                    && location.getBlockX() >= minX && location.getBlockX() <= maxX
+                    && location.getBlockZ() >= minZ && location.getBlockZ() <= maxZ;
         }
     }
 
@@ -413,77 +531,74 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
     }
 
     private final class OutpostsApiImpl implements OutpostsApi {
-        @Override
-        public Collection<OutpostView> outposts() {
-            return outposts.values().stream().map(MiraOutpostsPlugin::view).toList();
-        }
-
-        @Override
-        public Optional<OutpostView> outpost(String id) {
-            return Optional.ofNullable(outposts.get(sanitizeId(id))).map(MiraOutpostsPlugin::view);
-        }
-
-        @Override
-        public Optional<CaptureView> capture(String id) {
+        @Override public Collection<OutpostView> outposts() { return outposts.values().stream().map(MiraOutpostsPlugin::view).toList(); }
+        @Override public Optional<OutpostView> outpost(String id) { return Optional.ofNullable(outposts.get(sanitizeId(id))).map(MiraOutpostsPlugin::view); }
+        @Override public Optional<CaptureView> capture(String id) {
             String normalized = sanitizeId(id);
             Outpost outpost = outposts.get(normalized);
             Capture capture = captures.get(normalized);
             if (outpost == null || capture == null) return Optional.empty();
-            return Optional.of(new CaptureView(normalized, capture.factionId(), capture.factionName(),
-                    capture.seconds(), outpost.captureSeconds()));
+            return Optional.of(new CaptureView(normalized, capture.factionId(), capture.factionName(), capture.seconds(), outpost.captureSeconds()));
         }
-
-        @Override
-        public double multiplier(UUID factionId, String channel) {
-            return factionMultiplier(factionId, channel);
+        @Override public double multiplier(UUID factionId, String channel) { return factionMultiplier(factionId, channel); }
+        @Override public double playerMultiplier(UUID player, String channel) { return combinedPlayerMultiplier(player, channel); }
+        @Override public List<OutpostView> heldBy(UUID factionId) {
+            return outposts.values().stream().filter(o -> factionId != null && factionId.equals(o.ownerId()))
+                    .map(MiraOutpostsPlugin::view).toList();
         }
-
-        @Override
-        public double playerMultiplier(UUID player, String channel) {
-            return combinedPlayerMultiplier(player, channel);
-        }
-
-        @Override
-        public List<OutpostView> heldBy(UUID factionId) {
-            return outposts.values().stream()
-                    .filter(outpost -> factionId != null && factionId.equals(outpost.ownerId()))
-                    .map(MiraOutpostsPlugin::view)
-                    .toList();
+        @Override public boolean running(String id) {
+            Outpost outpost = outposts.get(sanitizeId(id));
+            return outpost != null && outpost.running();
         }
     }
 
-    private void msg(CommandSender sender, String raw) {
-        core.messages().send(sender, raw);
+    Collection<Outpost> outpostsInternal() { return Collections.unmodifiableCollection(outposts.values()); }
+    Outpost outpostInternal(String id) { return outposts.get(sanitizeId(id)); }
+    Capture captureInternal(String id) { return captures.get(sanitizeId(id)); }
+    long defaultRunSeconds() { return Math.max(60L, getConfig().getLong("schedule.default-run-minutes", 30L) * 60L); }
+    int maxCaptureSeconds() { return Math.max(5, getConfig().getInt("creation.max-capture-seconds", 3600)); }
+    double maxMultiplier() { return Math.max(1D, getConfig().getDouble("creation.max-multiplier", 100D)); }
+
+    private void audit(String action, Player actor, Outpost outpost, Map<String, String> extra) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("world", outpost.world());
+        metadata.put("minX", Integer.toString(outpost.minX()));
+        metadata.put("maxX", Integer.toString(outpost.maxX()));
+        metadata.put("minZ", Integer.toString(outpost.minZ()));
+        metadata.put("maxZ", Integer.toString(outpost.maxZ()));
+        metadata.put("channel", outpost.channel());
+        metadata.put("multiplier", Double.toString(outpost.multiplier()));
+        metadata.putAll(extra);
+        core.audit().record("MiraOutposts", action,
+                actor == null ? null : actor.getUniqueId(),
+                actor == null ? "scheduler" : actor.getName(),
+                outpost.id(), action.replace('_', ' '), Map.copyOf(metadata));
     }
+
+    void msg(CommandSender sender, String raw) { core.messages().send(sender, raw); }
 
     private void broadcast(String raw) {
         for (Player player : Bukkit.getOnlinePlayers()) core.messages().send(player, raw);
         core.messages().send(Bukkit.getConsoleSender(), raw);
     }
 
-    private static OutpostView view(Outpost outpost) {
-        return new OutpostView(outpost.id(), outpost.world(),
-                outpost.x(), outpost.y(), outpost.z(),
-                outpost.radius(), outpost.captureSeconds(),
-                outpost.channel(), outpost.multiplier(),
-                outpost.ownerId(), outpost.ownerName());
+    private static OutpostView view(Outpost o) {
+        return new OutpostView(o.id(), o.world(), o.minX(), o.maxX(), o.minZ(), o.maxZ(),
+                o.captureSeconds(), o.channel(), o.multiplier(), o.ownerId(), o.ownerName(),
+                o.running(), o.scheduleIntervalSeconds(), o.scheduledRunSeconds(), o.nextStartAt());
     }
 
-    private static String sanitizeId(String input) {
+    static String sanitizeId(String input) {
         if (input == null) return "";
         return input.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_")
                 .replaceAll("_+", "_").replaceAll("^_+|_+$", "");
     }
-
-    private static String sanitizeChannel(String input) {
-        return sanitizeId(input);
-    }
+    static String sanitizeChannel(String input) { return sanitizeId(input); }
+    static String format(double value) { return String.format(Locale.US, "%.2f", value); }
 
     private static List<String> complete(String prefix, Collection<String> values) {
         String lower = prefix == null ? "" : prefix.toLowerCase(Locale.ROOT);
-        return values.stream()
-                .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(lower))
-                .distinct().sorted().toList();
+        return values.stream().filter(value -> value.toLowerCase(Locale.ROOT).startsWith(lower)).distinct().sorted().toList();
     }
 
     private static double safeMultiply(double current, double adding, double maximum) {
@@ -491,10 +606,6 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         double result = current * adding;
         if (!Double.isFinite(result)) return maximum;
         return Math.min(maximum, result);
-    }
-
-    private static String format(double value) {
-        return String.format(Locale.US, "%.2f", value);
     }
 
     private void load() {
@@ -508,48 +619,67 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 String id = sanitizeId(rawId);
                 if (id.isBlank()) continue;
                 String base = rawId + ".";
-
                 String world = root.getString(base + "world");
                 if (world == null || world.isBlank()) continue;
 
-                int radius = Math.max(3, root.getInt(base + "radius", 8));
-                int captureSeconds = Math.max(5, root.getInt(base + "capture-seconds", 30));
-                String channel = sanitizeChannel(root.getString(base + "channel", "shop_sell"));
-                if (channel.isBlank()) channel = "shop_sell";
+                int minX, maxX, minZ, maxZ;
+                if (root.contains(base + "min-x")) {
+                    minX = root.getInt(base + "min-x");
+                    maxX = root.getInt(base + "max-x");
+                    minZ = root.getInt(base + "min-z");
+                    maxZ = root.getInt(base + "max-z");
+                } else {
+                    double x = root.getDouble(base + "x");
+                    double z = root.getDouble(base + "z");
+                    int radius = Math.max(1, root.getInt(base + "radius", 8));
+                    minX = (int) Math.floor(x) - radius;
+                    maxX = (int) Math.floor(x) + radius;
+                    minZ = (int) Math.floor(z) - radius;
+                    maxZ = (int) Math.floor(z) + radius;
+                }
 
-                double multiplier = root.getDouble(base + "multiplier", 1.1D);
+                int captureSeconds = Math.max(5, root.getInt(base + "capture-seconds", 30));
+                String channel = sanitizeChannel(root.getString(base + "channel", "spawner_rate"));
+                if (channel.isBlank()) channel = "spawner_rate";
+                double multiplier = root.getDouble(base + "multiplier", 1.25D);
                 if (!Double.isFinite(multiplier) || multiplier < 1D) multiplier = 1D;
 
                 String ownerText = root.getString(base + "owner-id");
                 UUID ownerId = ownerText == null || ownerText.isBlank() ? null : UUID.fromString(ownerText);
 
-                outposts.put(id, new Outpost(id, world,
-                        root.getDouble(base + "x"),
-                        root.getDouble(base + "y"),
-                        root.getDouble(base + "z"),
-                        radius, captureSeconds, channel, multiplier,
-                        ownerId, root.getString(base + "owner-name")));
-            } catch (RuntimeException ignored) {
+                outposts.put(id, new Outpost(id, world, minX, maxX, minZ, maxZ,
+                        captureSeconds, channel, multiplier, ownerId, root.getString(base + "owner-name"),
+                        root.getBoolean(base + "running", false),
+                        Math.max(0L, root.getLong(base + "schedule-interval-seconds", 0L)),
+                        Math.max(60L, root.getLong(base + "scheduled-run-seconds", defaultRunSeconds())),
+                        Math.max(0L, root.getLong(base + "next-start-at", 0L)),
+                        Math.max(0L, root.getLong(base + "scheduled-stop-at", 0L))));
+            } catch (RuntimeException exception) {
+                getLogger().warning("Skipping invalid outpost " + rawId + ": " + exception.getMessage());
             }
         }
     }
 
     private synchronized void save() {
         YamlConfiguration yaml = new YamlConfiguration();
-        for (Outpost outpost : outposts.values()) {
-            String base = "outposts." + outpost.id() + ".";
-            yaml.set(base + "world", outpost.world());
-            yaml.set(base + "x", outpost.x());
-            yaml.set(base + "y", outpost.y());
-            yaml.set(base + "z", outpost.z());
-            yaml.set(base + "radius", outpost.radius());
-            yaml.set(base + "capture-seconds", outpost.captureSeconds());
-            yaml.set(base + "channel", outpost.channel());
-            yaml.set(base + "multiplier", outpost.multiplier());
-            yaml.set(base + "owner-id", outpost.ownerId() == null ? null : outpost.ownerId().toString());
-            yaml.set(base + "owner-name", outpost.ownerName());
+        for (Outpost o : outposts.values()) {
+            String base = "outposts." + o.id() + ".";
+            yaml.set(base + "world", o.world());
+            yaml.set(base + "min-x", o.minX());
+            yaml.set(base + "max-x", o.maxX());
+            yaml.set(base + "min-z", o.minZ());
+            yaml.set(base + "max-z", o.maxZ());
+            yaml.set(base + "capture-seconds", o.captureSeconds());
+            yaml.set(base + "channel", o.channel());
+            yaml.set(base + "multiplier", o.multiplier());
+            yaml.set(base + "owner-id", o.ownerId() == null ? null : o.ownerId().toString());
+            yaml.set(base + "owner-name", o.ownerName());
+            yaml.set(base + "running", o.running());
+            yaml.set(base + "schedule-interval-seconds", o.scheduleIntervalSeconds());
+            yaml.set(base + "scheduled-run-seconds", o.scheduledRunSeconds());
+            yaml.set(base + "next-start-at", o.nextStartAt());
+            yaml.set(base + "scheduled-stop-at", o.scheduledStopAt());
         }
-
         try {
             yaml.save(file);
         } catch (IOException exception) {
@@ -557,9 +687,31 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         }
     }
 
-    private record Outpost(String id, String world, double x, double y, double z,
-                           int radius, int captureSeconds, String channel, double multiplier,
-                           UUID ownerId, String ownerName) { }
+    public record ChannelExample(String id, Material icon, String name, String description) { }
 
-    private record Capture(UUID factionId, String factionName, int seconds) { }
+    record Outpost(String id, String world, int minX, int maxX, int minZ, int maxZ,
+                   int captureSeconds, String channel, double multiplier,
+                   UUID ownerId, String ownerName, boolean running,
+                   long scheduleIntervalSeconds, long scheduledRunSeconds,
+                   long nextStartAt, long scheduledStopAt) {
+        boolean contains(Location location) {
+            return location != null && location.getWorld() != null
+                    && location.getWorld().getName().equals(world)
+                    && location.getBlockX() >= minX && location.getBlockX() <= maxX
+                    && location.getBlockZ() >= minZ && location.getBlockZ() <= maxZ;
+        }
+        int width() { return maxX - minX + 1; }
+        int depth() { return maxZ - minZ + 1; }
+        long area() { return (long) width() * depth(); }
+        Outpost withOwner(UUID id, String name) { return new Outpost(this.id, world,minX,maxX,minZ,maxZ,captureSeconds,channel,multiplier,id,name,running,scheduleIntervalSeconds,scheduledRunSeconds,nextStartAt,scheduledStopAt); }
+        Outpost withRuntime(boolean running, UUID ownerId, String ownerName, long next, long stop) { return new Outpost(id,world,minX,maxX,minZ,maxZ,captureSeconds,channel,multiplier,ownerId,ownerName,running,scheduleIntervalSeconds,scheduledRunSeconds,next,stop); }
+        Outpost withSchedule(long interval,long run,long next) { return new Outpost(id,world,minX,maxX,minZ,maxZ,captureSeconds,channel,multiplier,ownerId,ownerName,running,interval,run,next,scheduledStopAt); }
+        Outpost withCaptureSeconds(int seconds) { return new Outpost(id,world,minX,maxX,minZ,maxZ,seconds,channel,multiplier,ownerId,ownerName,running,scheduleIntervalSeconds,scheduledRunSeconds,nextStartAt,scheduledStopAt); }
+        Outpost withMultiplier(double value) { return new Outpost(id,world,minX,maxX,minZ,maxZ,captureSeconds,channel,value,ownerId,ownerName,running,scheduleIntervalSeconds,scheduledRunSeconds,nextStartAt,scheduledStopAt); }
+        Outpost withChannel(String value) { return new Outpost(id,world,minX,maxX,minZ,maxZ,captureSeconds,value,multiplier,ownerId,ownerName,running,scheduleIntervalSeconds,scheduledRunSeconds,nextStartAt,scheduledStopAt); }
+        Outpost withBounds(String world,int minX,int maxX,int minZ,int maxZ) { return new Outpost(id,world,minX,maxX,minZ,maxZ,captureSeconds,channel,multiplier,ownerId,ownerName,running,scheduleIntervalSeconds,scheduledRunSeconds,nextStartAt,scheduledStopAt); }
+    }
+
+    record Capture(UUID factionId, String factionName, int seconds) { }
+    private record BarState(String label, BarColor color, double progress) { }
 }
