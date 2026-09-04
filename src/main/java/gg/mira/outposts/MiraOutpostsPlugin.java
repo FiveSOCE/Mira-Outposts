@@ -251,7 +251,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 "scheduled", Boolean.toString(scheduled),
                 "nextStartAt", Long.toString(next),
                 "scheduledStopAt", Long.toString(scheduledStop)));
-        broadcast("&6[Outpost] &e" + id + " &7is now active and ready to capture.");
+        broadcast("&e&l" + id + " &7is now active and ready to capture.");
         return true;
     }
 
@@ -267,7 +267,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         save();
 
         audit("OUTPOST_STOPPED", actor, updated, Map.of("scheduled", Boolean.toString(scheduled)));
-        broadcast("&6[Outpost] &e" + id + " &7has stopped.");
+        broadcast("&e&l" + id + " &7has stopped.");
         return true;
     }
 
@@ -416,10 +416,10 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 "factionName", capture.factionName(),
                 "previousOwner", previous.ownerId() == null ? "unclaimed" : previous.ownerId().toString()));
 
-        broadcast("&6[Outpost] &f" + capture.factionName()
-                + " &7captured &e" + captured.id()
-                + " &7and controls &f" + captured.channel()
-                + " x" + format(captured.multiplier()) + "&7 while the outpost is active.");
+        broadcast("&e&l" + capture.factionName()
+                + " &7Has captured &a&l" + captured.id()
+                + " &7and has gained &c&l" + rewardLabel(captured)
+                + "&7.");
     }
 
     private void updateBossBar(Outpost outpost, List<Player> inside, BarState state) {
@@ -428,8 +428,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
         bar.setTitle(ChatColor.translateAlternateColorCodes('&',
                 "&6&l" + outpost.id().toUpperCase(Locale.ROOT)
-                        + " &8- &f" + state.label()
-                        + " &8- &7" + outpost.channel() + " x" + format(outpost.multiplier())));
+                        + " &8- &f" + state.label()));
         bar.setColor(state.color());
         bar.setProgress(Math.max(0D, Math.min(1D, state.progress())));
 
@@ -579,8 +578,18 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
     void msg(CommandSender sender, String raw) { core.messages().send(sender, raw); }
 
     private void broadcast(String raw) {
-        for (Player player : Bukkit.getOnlinePlayers()) core.messages().send(player, raw);
-        core.messages().send(Bukkit.getConsoleSender(), raw);
+        String prefixed = "&5&lMira &8&l>> &r" + raw;
+        for (Player player : Bukkit.getOnlinePlayers()) core.messages().send(player, prefixed);
+        core.messages().send(Bukkit.getConsoleSender(), prefixed);
+    }
+
+    private String rewardLabel(Outpost outpost) {
+        ChannelExample example = CHANNELS.stream()
+                .filter(channel -> channel.id().equalsIgnoreCase(outpost.channel()))
+                .findFirst()
+                .orElse(null);
+        String name = example == null ? outpost.channel() : example.name();
+        return "x" + format(outpost.multiplier()) + " " + name;
     }
 
     private static OutpostView view(Outpost o) {
