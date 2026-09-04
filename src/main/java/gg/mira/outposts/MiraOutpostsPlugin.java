@@ -165,9 +165,10 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 continue;
             }
 
-            List<Player> inside = world.getPlayers().stream()
-                    .filter(player -> !player.isDead() && outpost.contains(player.getLocation()))
-                    .toList();
+            List<Player> inside = new ArrayList<>();
+            for (Player player : world.getPlayers()) {
+                if (!player.isDead() && outpost.contains(player.getLocation())) inside.add(player);
+            }
 
             Map<UUID, String> factionsPresent = new LinkedHashMap<>();
             for (Player player : inside) {
