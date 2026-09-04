@@ -1,0 +1,14 @@
+capture:
+  reset-when-empty: true
+  reset-when-contested: true
+
+creation:
+  max-radius: 128
+  max-capture-seconds: 3600
+  max-multiplier: 100.0
+
+api:
+  max-effective-multiplier: 1000.0
+
+boosters:
+  combine-in-player-multiplier: true
