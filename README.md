@@ -1,10 +1,10 @@
 # MiraOutposts
 
-MiraOutposts v0.2.0 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
+MiraOutposts v0.2.1 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
 
 ## Download
 
-[**Download MiraOutposts v0.2.0**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.0/MiraOutposts-0.2.0.jar)
+[**Download MiraOutposts v0.2.1**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.1/MiraOutposts-0.2.1.jar)
 
 [View All Releases](https://github.com/FiveSOCE/Mira-Outposts/releases)
 
@@ -154,7 +154,7 @@ Exactly one faction must be represented inside the FAWE-defined region for captu
 
 ## Boss Bar
 
-Players physically inside a RUNNING outpost receive a live boss bar.
+Players physically inside a RUNNING outpost receive a live boss bar. The boss bar intentionally stays compact and shows only the outpost ID plus capture state/progress; reward/channel text is omitted to avoid overly long boss-bar titles.
 
 States include:
 
@@ -180,7 +180,7 @@ Persistent faction ownership stays in MiraOutposts. Temporary global/personal bo
 
 ## Existing Outpost Migration
 
-v0.2.0 automatically reads old v0.1.x radius-based outposts.
+v0.2.1 automatically reads old v0.1.x radius-based outposts.
 
 An old center + radius is converted into an equivalent rectangular X/Z region during load. Saving after startup writes the new bounds format.
 
@@ -210,6 +210,18 @@ It exposes:
 `OutpostCapturedEvent` still fires after successful ownership changes.
 
 Create/edit/start/stop/schedule/capture/delete actions are written to MiraCore audit history.
+
+## Mira Chat Style
+
+Player-facing outpost broadcasts use the shared Mira prefix:
+
+`&5&lMira &8&l>> &r`
+
+Capture messages use:
+
+`&e&l<Faction> &7Has captured &a&l<Outpost> &7and has gained &c&l<Reward>&7.`
+
+The old `[Outpost]` label is no longer used.
 
 ## Building
 
