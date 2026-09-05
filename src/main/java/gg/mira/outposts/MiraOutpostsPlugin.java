@@ -35,6 +35,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
     private final Map<String, Outpost> outposts = new LinkedHashMap<>();
     private final Map<String, Capture> captures = new HashMap<>();
     private final Map<String, BossBar> bossBars = new HashMap<>();
+    private final Map<String, String> audioStates = new HashMap<>();
 
     private File file;
     private MiraCore core;
@@ -183,9 +184,13 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
             if (factionsPresent.isEmpty()) {
                 if (resetEmpty) captures.remove(outpost.id());
+                audioStates.put(outpost.id(), "EMPTY");
                 barState = new BarState("UNCLAIMED", BarColor.WHITE, 0D);
             } else if (factionsPresent.size() > 1) {
                 if (resetContested) captures.remove(outpost.id());
+                String previousAudioState = audioStates.put(outpost.id(), "CONTESTED");
+                playOutpostAudio(outpost, "CONTESTED".equals(previousAudioState)
+                        ? "outpost_contested_pulse" : "outpost_contested");
                 barState = new BarState("CONTESTED", BarColor.RED, 1D);
             } else {
                 UUID factionId = factionsPresent.keySet().iterator().next();
@@ -193,11 +198,14 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
                 if (factionId.equals(outpost.ownerId())) {
                     captures.remove(outpost.id());
+                    audioStates.put(outpost.id(), "CONTROLLED");
                     barState = new BarState("CONTROLLED BY " + factionName, BarColor.GREEN, 1D);
                 } else {
                     if (current == null || !current.factionId().equals(factionId)) {
                         current = new Capture(factionId, factionName, 0);
+                        playOutpostAudio(outpost, "outpost_capture_started");
                     }
+                    audioStates.put(outpost.id(), "CAPTURING");
                     Capture progressed = new Capture(current.factionId(), current.factionName(), current.seconds() + 1);
                     captures.put(outpost.id(), progressed);
                     double progress = Math.min(1D, (double) progressed.seconds() / outpost.captureSeconds());
@@ -251,6 +259,8 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 "scheduled", Boolean.toString(scheduled),
                 "nextStartAt", Long.toString(next),
                 "scheduledStopAt", Long.toString(scheduledStop)));
+        audioStates.put(id, "ACTIVE");
+        playOutpostAudio(updated, "outpost_started");
         broadcast("&e&l" + id + " &7is now active and ready to capture.");
         return true;
     }
@@ -264,9 +274,11 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         outposts.put(id, updated);
         captures.remove(id);
         hideBossBar(id);
+        audioStates.remove(id);
         save();
 
         audit("OUTPOST_STOPPED", actor, updated, Map.of("scheduled", Boolean.toString(scheduled)));
+        playOutpostAudio(updated, "outpost_stopped");
         broadcast("&e&l" + id + " &7has stopped.");
         return true;
     }
@@ -402,6 +414,16 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         return true;
     }
 
+    private void playOutpostAudio(Outpost outpost, String eventId) {
+        if (outpost == null) return;
+        World world = Bukkit.getWorld(outpost.world());
+        if (world == null) return;
+        double x = (outpost.minX() + outpost.maxX() + 1) / 2.0D;
+        double z = (outpost.minZ() + outpost.maxZ() + 1) / 2.0D;
+        int y = world.getHighestBlockYAt((int) Math.floor(x), (int) Math.floor(z)) + 1;
+        CosmeticsBridge.playNearby(new Location(world, x, y, z), eventId, 64.0D);
+    }
+
     private void completeCapture(Outpost previous, Capture capture) {
         Outpost captured = previous.withOwner(capture.factionId(), capture.factionName());
         outposts.put(previous.id(), captured);
@@ -421,13 +443,8 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 + " &7and has gained &c&l" + rewardLabel(captured)
                 + "&7.");
 
-        World world = Bukkit.getWorld(captured.world());
-        if (world != null) {
-            double x = (captured.minX() + captured.maxX() + 1) / 2.0D;
-            double z = (captured.minZ() + captured.maxZ() + 1) / 2.0D;
-            int y = world.getHighestBlockYAt((int) Math.floor(x), (int) Math.floor(z)) + 1;
-            CosmeticsBridge.playNearby(new Location(world, x, y, z), "outpost_captured", 64.0D);
-        }
+        audioStates.put(captured.id(), "CONTROLLED");
+        playOutpostAudio(captured, "outpost_captured");
     }
 
     private void updateBossBar(Outpost outpost, List<Player> inside, BarState state) {
