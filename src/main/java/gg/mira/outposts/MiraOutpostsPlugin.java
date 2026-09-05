@@ -46,6 +46,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
     private long lastBoosterResolveAttempt;
     private FaweSelectionService fawe;
     private OutpostGuiService gui;
+    private OutpostRotationService rotation;
 
     @Override
     public void onEnable() {
@@ -64,6 +65,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
         fawe = new FaweSelectionService();
         gui = new OutpostGuiService(this, fawe);
+        rotation = new OutpostRotationService(this);
         getServer().getPluginManager().registerEvents(new OutpostGuiListener(gui), this);
 
         api = new OutpostsApiImpl();
@@ -82,6 +84,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (rotation != null) rotation.save();
         for (BossBar bar : bossBars.values()) bar.removeAll();
         bossBars.clear();
         save();
@@ -129,6 +132,11 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("rotate") && player.hasPermission("miraoutposts.admin")) {
+            if (!rotation.rotate(player)) msg(player, "&cOutpost rotation could not be changed.");
+            return true;
+        }
+
         gui.openMain(player, 0);
         return true;
     }
@@ -138,7 +146,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                                       @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
             List<String> values = new ArrayList<>(List.of("gui", "info"));
-            if (sender.hasPermission("miraoutposts.admin")) values.addAll(List.of("start", "stop"));
+            if (sender.hasPermission("miraoutposts.admin")) values.addAll(List.of("start", "stop", "rotate"));
             return complete(args[0], values);
         }
         if (args.length == 2 && List.of("info", "start", "stop").contains(args[0].toLowerCase(Locale.ROOT))) {
@@ -149,6 +157,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
     private void tick() {
         long now = System.currentTimeMillis();
+        if (rotation != null) rotation.tick(now);
         processSchedules(now);
 
         boolean resetEmpty = getConfig().getBoolean("capture.reset-when-empty", true);
@@ -228,6 +237,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
     private void processSchedules(long now) {
         for (Outpost outpost : new ArrayList<>(outposts.values())) {
+            if (rotation != null && rotation.controls(outpost.id())) continue;
             if (outpost.running() && outpost.scheduledStopAt() > 0L && now >= outpost.scheduledStopAt()) {
                 stopOutpost(outpost.id(), null, true);
                 continue;
@@ -438,6 +448,8 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 "factionName", capture.factionName(),
                 "previousOwner", previous.ownerId() == null ? "unclaimed" : previous.ownerId().toString()));
 
+        dispatchCaptureRewards(captured, previous, capture);
+
         broadcast("&e&l" + capture.factionName()
                 + " &7Has captured &a&l" + captured.id()
                 + " &7and has gained &c&l" + rewardLabel(captured)
@@ -445,6 +457,26 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
         audioStates.put(captured.id(), "CONTROLLED");
         playOutpostAudio(captured, "outpost_captured");
+    }
+
+    private void dispatchCaptureRewards(Outpost captured, Outpost previous, Capture capture) {
+        List<String> commands = new ArrayList<>();
+        commands.addAll(getConfig().getStringList("rewards.capture-commands.default"));
+        commands.addAll(getConfig().getStringList("rewards.capture-commands.outposts." + captured.id()));
+        if (commands.isEmpty()) return;
+
+        String previousOwner = previous.ownerName() == null || previous.ownerName().isBlank()
+                ? "unclaimed" : previous.ownerName();
+        for (String raw : commands) {
+            if (raw == null || raw.isBlank()) continue;
+            String command = raw
+                    .replace("%outpost%", captured.id())
+                    .replace("%faction%", capture.factionName())
+                    .replace("%faction_id%", capture.factionId().toString())
+                    .replace("%previous_owner%", previousOwner);
+            if (command.startsWith("/")) command = command.substring(1);
+            if (!command.isBlank()) Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+        }
     }
 
     private void updateBossBar(Outpost outpost, List<Player> inside, BarState state) {
@@ -602,10 +634,18 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
 
     void msg(CommandSender sender, String raw) { core.messages().send(sender, raw); }
 
-    private void broadcast(String raw) {
+    void broadcast(String raw) {
         String prefixed = "&5&lMira &8&l>> &r" + raw;
         for (Player player : Bukkit.getOnlinePlayers()) core.messages().send(player, prefixed);
         core.messages().send(Bukkit.getConsoleSender(), prefixed);
+    }
+
+    void auditRotation(Player actor, List<String> active, long nextRotationAt) {
+        core.audit().record("MiraOutposts", "OUTPOST_ROTATION_CHANGED",
+                actor == null ? null : actor.getUniqueId(),
+                actor == null ? "scheduler" : actor.getName(),
+                "rotation", "Outpost rotation changed",
+                Map.of("active", String.join(",", active), "nextRotationAt", Long.toString(nextRotationAt)));
     }
 
     private String rewardLabel(Outpost outpost) {
