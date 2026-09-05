@@ -8,23 +8,37 @@ import org.bukkit.plugin.Plugin;
 public final class CosmeticsBridge {
     private CosmeticsBridge() { }
 
-    public static void play(Player viewer, String eventId, Location location) {
+    public static void playAudio(Player viewer, String eventId, Location location) {
         if (viewer == null || eventId == null || location == null) return;
         Plugin cosmetics = Bukkit.getPluginManager().getPlugin("MiraCosmetics");
         if (cosmetics == null || !cosmetics.isEnabled()) return;
         try {
-            cosmetics.getClass().getMethod("playVisualEvent", Player.class, String.class, Location.class)
+            cosmetics.getClass().getMethod("playAudioEvent", Player.class, String.class, Location.class)
                     .invoke(cosmetics, viewer, eventId, location);
         } catch (ReflectiveOperationException ignored) { }
     }
 
-    public static void playNearby(Location location, String eventId, double radius) {
+    public static void playAudioGlobal(String eventId, Location location) {
+        if (eventId == null) return;
+        Plugin cosmetics = Bukkit.getPluginManager().getPlugin("MiraCosmetics");
+        if (cosmetics == null || !cosmetics.isEnabled()) return;
+        try {
+            cosmetics.getClass().getMethod("playAudioEventGlobal", String.class, Location.class)
+                    .invoke(cosmetics, eventId, location);
+        } catch (ReflectiveOperationException ignored) { }
+    }
+
+    public static void playVisualNearby(Location location, String eventId, double radius) {
         if (location == null || location.getWorld() == null) return;
+        Plugin cosmetics = Bukkit.getPluginManager().getPlugin("MiraCosmetics");
+        if (cosmetics == null || !cosmetics.isEnabled()) return;
         double radiusSquared = radius * radius;
         for (Player viewer : location.getWorld().getPlayers()) {
-            if (viewer.getLocation().distanceSquared(location) <= radiusSquared) {
-                play(viewer, eventId, location);
-            }
+            if (viewer.getLocation().distanceSquared(location) > radiusSquared) continue;
+            try {
+                cosmetics.getClass().getMethod("playVisualOnlyEvent", Player.class, String.class, Location.class)
+                        .invoke(cosmetics, viewer, eventId, location);
+            } catch (ReflectiveOperationException ignored) { }
         }
     }
 }
