@@ -198,7 +198,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
             } else if (factionsPresent.size() > 1) {
                 if (resetContested) captures.remove(outpost.id());
                 String previousAudioState = audioStates.put(outpost.id(), "CONTESTED");
-                playOutpostAudio(outpost, "CONTESTED".equals(previousAudioState)
+                playOutpostAudioGlobal(outpost, "CONTESTED".equals(previousAudioState)
                         ? "outpost_contested_pulse" : "outpost_contested");
                 barState = new BarState("CONTESTED", BarColor.RED, 1D);
             } else {
@@ -212,7 +212,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 } else {
                     if (current == null || !current.factionId().equals(factionId)) {
                         current = new Capture(factionId, factionName, 0);
-                        playOutpostAudio(outpost, "outpost_capture_started");
+                        playOutpostAudioFaction(outpost, "outpost_capture_started", factionId);
                     }
                     audioStates.put(outpost.id(), "CAPTURING");
                     Capture progressed = new Capture(current.factionId(), current.factionName(), current.seconds() + 1);
@@ -270,7 +270,7 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 "nextStartAt", Long.toString(next),
                 "scheduledStopAt", Long.toString(scheduledStop)));
         audioStates.put(id, "ACTIVE");
-        playOutpostAudio(updated, "outpost_started");
+        playOutpostAudioGlobal(updated, "outpost_started");
         broadcast("&e&l" + id + " &7is now active and ready to capture.");
         return true;
     }
@@ -288,7 +288,9 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         save();
 
         audit("OUTPOST_STOPPED", actor, updated, Map.of("scheduled", Boolean.toString(scheduled)));
-        playOutpostAudio(updated, "outpost_stopped");
+        if (updated.ownerId() != null) {
+            playOutpostAudioFaction(updated, "outpost_stopped", updated.ownerId());
+        }
         broadcast("&e&l" + id + " &7has stopped.");
         return true;
     }
@@ -424,14 +426,31 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
         return true;
     }
 
-    private void playOutpostAudio(Outpost outpost, String eventId) {
-        if (outpost == null) return;
+    private Location outpostPresentationLocation(Outpost outpost) {
+        if (outpost == null) return null;
         World world = Bukkit.getWorld(outpost.world());
-        if (world == null) return;
+        if (world == null) return null;
         double x = (outpost.minX() + outpost.maxX() + 1) / 2.0D;
         double z = (outpost.minZ() + outpost.maxZ() + 1) / 2.0D;
         int y = world.getHighestBlockYAt((int) Math.floor(x), (int) Math.floor(z)) + 1;
-        CosmeticsBridge.playNearby(new Location(world, x, y, z), eventId, 64.0D);
+        return new Location(world, x, y, z);
+    }
+
+    private void playOutpostAudioGlobal(Outpost outpost, String eventId) {
+        Location at = outpostPresentationLocation(outpost);
+        if (at != null) CosmeticsBridge.playAudioGlobal(eventId, at);
+    }
+
+    private void playOutpostAudioFaction(Outpost outpost, String eventId, UUID factionId) {
+        if (factionId == null) return;
+        Location at = outpostPresentationLocation(outpost);
+        if (at == null) return;
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (factions.factionId(player.getUniqueId()).filter(factionId::equals).isPresent()) {
+                CosmeticsBridge.playAudio(player, eventId, at);
+            }
+        }
     }
 
     private void completeCapture(Outpost previous, Capture capture) {
@@ -456,7 +475,11 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 + "&7.");
 
         audioStates.put(captured.id(), "CONTROLLED");
-        playOutpostAudio(captured, "outpost_captured");
+        Location presentationAt = outpostPresentationLocation(captured);
+        if (presentationAt != null) {
+            CosmeticsBridge.playVisualNearby(presentationAt, "outpost_captured", 64.0D);
+            CosmeticsBridge.playAudioGlobal("outpost_captured", presentationAt);
+        }
     }
 
     private void dispatchCaptureRewards(Outpost captured, Outpost previous, Capture capture) {
