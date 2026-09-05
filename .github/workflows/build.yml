@@ -27,19 +27,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MiraOutposts-0.2.2
-          path: build/libs/MiraOutposts-0.2.2.jar
+          name: MiraOutposts-0.2.3
+          path: build/libs/MiraOutposts-0.2.3.jar
           if-no-files-found: error
 
-      - name: Publish v0.2.2 release if missing
+      - name: Publish v0.2.3 release if missing
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view v0.2.2 >/dev/null 2>&1; then
-            gh release create v0.2.2 \
-              build/libs/MiraOutposts-0.2.2.jar \
+          if ! gh release view v0.2.3 >/dev/null 2>&1; then
+            gh release create v0.2.3 \
+              build/libs/MiraOutposts-0.2.3.jar \
               --target "${{ github.sha }}" \
-              --title "MiraOutposts v0.2.2" \
-              --notes "Adds MiraCosmetics capture-complete bursts centered on the outpost for nearby viewers, respecting each viewer's cosmetics visual toggle."
+              --title "MiraOutposts v0.2.3" \
+              --notes "Adds MiraCosmetics audio hooks for Outpost activation, capture start, contested warnings/pulses, capture completion and shutdown while preserving existing capture visuals."
           fi
