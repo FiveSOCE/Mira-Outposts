@@ -1,5 +1,5 @@
 name: MiraOutposts
-version: 0.2.3
+version: 0.2.4
 main: gg.mira.outposts.MiraOutpostsPlugin
 api-version: '1.21'
 author: FiveSOCE
@@ -9,7 +9,7 @@ softdepend: [MiraBoosters, MiraCosmetics]
 commands:
   outpost:
     description: Open and manage MiraOutposts
-    usage: /outpost [gui|info <id>|start <id>|stop <id>]
+    usage: /outpost [gui|info <id>|start <id>|stop <id>|rotate]
     permission: miraoutposts.use
 permissions:
   miraoutposts.use:
