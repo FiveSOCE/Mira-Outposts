@@ -27,19 +27,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MiraOutposts-0.2.4
-          path: build/libs/MiraOutposts-0.2.4.jar
+          name: MiraOutposts-0.2.5
+          path: build/libs/MiraOutposts-0.2.5.jar
           if-no-files-found: error
 
-      - name: Publish v0.2.4 release if missing
+      - name: Publish v0.2.5 release if missing
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view v0.2.4 >/dev/null 2>&1; then
-            gh release create v0.2.4 \
-              build/libs/MiraOutposts-0.2.4.jar \
+          if ! gh release view v0.2.5 >/dev/null 2>&1; then
+            gh release create v0.2.5 \
+              build/libs/MiraOutposts-0.2.5.jar \
               --target "${{ github.sha }}" \
-              --title "MiraOutposts v0.2.4" \
-              --notes "Adds functional capture reward command hooks and persistent strategic outpost rotation groups while preserving the existing owner-specific multiplier channel reward authority and capture system."
+              --title "MiraOutposts v0.2.5" \
+              --notes "Corrects Outpost sound audiences: start, contested/pulse and captured are global; capture start targets the capturing faction; stop targets the current owner faction; captured visuals remain local while audio is global."
           fi
