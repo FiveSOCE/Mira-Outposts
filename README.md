@@ -1,10 +1,10 @@
 # MiraOutposts
 
-MiraOutposts v0.2.4 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
+MiraOutposts v0.2.5 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
 
 ## Download
 
-[**Download MiraOutposts v0.2.4**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.4/MiraOutposts-0.2.4.jar)
+[**Download MiraOutposts v0.2.5**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.5/MiraOutposts-0.2.5.jar)
 
 [View All Releases](https://github.com/FiveSOCE/Mira-Outposts/releases)
 
@@ -242,7 +242,7 @@ MiraCosmetics audio hooks cover Outpost activation, capture start, contested war
 
 ## Rewards and Strategic Rotation (0.2.4)
 
-v0.2.4 extends the existing outpost reward authority rather than replacing it.
+v0.2.5 extends the existing outpost reward authority rather than replacing it.
 
 The normal held reward remains the configured owner-specific channel multiplier, such as `spawner_rate`, `shop_sell` or another custom channel consumed by a Mira plugin.
 
@@ -256,3 +256,15 @@ Additional capture-time reward hooks can run configured console commands once wh
 Strategic rotation is optional and persistent. Only outpost IDs explicitly listed under `rotation.outposts` are controlled by the rotation service. Per-outpost schedules are ignored for those IDs so the two schedulers cannot fight each other.
 
 Rotation supports configurable interval, active-count, ordered/random selection, persistent rotation state and manual admin `/outpost rotate`.
+
+
+## Outpost Audio Audiences (0.2.5)
+
+- Outpost started: server-wide
+- capture started: online members of the capturing faction
+- contested: server-wide
+- contested pulse: server-wide, with MiraCosmetics cooldown protection
+- captured: server-wide audio; capture visual remains local to the Outpost
+- stopped: online members of the faction that currently owns the Outpost
+
+MiraOutposts now uses separate global, faction and visual-only presentation paths instead of the old fixed 64-block sound radius.
