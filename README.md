@@ -1,10 +1,10 @@
 # MiraOutposts
 
-MiraOutposts v0.2.1 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
+MiraOutposts v0.2.2 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
 
 ## Download
 
-[**Download MiraOutposts v0.2.1**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.1/MiraOutposts-0.2.1.jar)
+[**Download MiraOutposts v0.2.2**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.2/MiraOutposts-0.2.2.jar)
 
 [View All Releases](https://github.com/FiveSOCE/Mira-Outposts/releases)
 
@@ -180,7 +180,7 @@ Persistent faction ownership stays in MiraOutposts. Temporary global/personal bo
 
 ## Existing Outpost Migration
 
-v0.2.1 automatically reads old v0.1.x radius-based outposts.
+v0.2.2 automatically reads old v0.1.x radius-based outposts.
 
 An old center + radius is converted into an equivalent rectangular X/Z region during load. Saving after startup writes the new bounds format.
 
@@ -230,3 +230,8 @@ gradle clean build
 ```
 
 The output JAR is created in `build/libs/`.
+
+
+## MiraCosmetics Integration (0.2.2)
+
+Adds MiraCosmetics capture-complete bursts centered on the outpost for nearby viewers, respecting each viewer's cosmetics visual toggle.
