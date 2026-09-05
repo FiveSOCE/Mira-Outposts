@@ -1,11 +1,11 @@
 name: MiraOutposts
-version: 0.2.1
+version: 0.2.2
 main: gg.mira.outposts.MiraOutpostsPlugin
 api-version: '1.21'
 author: FiveSOCE
 description: FAWE-defined scheduled faction capture events with GUI administration and live boss bars.
 depend: [MiraCore, MiraFactions, FastAsyncWorldEdit]
-softdepend: [MiraBoosters]
+softdepend: [MiraBoosters, MiraCosmetics]
 commands:
   outpost:
     description: Open and manage MiraOutposts
