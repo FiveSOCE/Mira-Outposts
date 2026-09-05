@@ -420,6 +420,14 @@ public final class MiraOutpostsPlugin extends JavaPlugin {
                 + " &7Has captured &a&l" + captured.id()
                 + " &7and has gained &c&l" + rewardLabel(captured)
                 + "&7.");
+
+        World world = Bukkit.getWorld(captured.world());
+        if (world != null) {
+            double x = (captured.minX() + captured.maxX() + 1) / 2.0D;
+            double z = (captured.minZ() + captured.maxZ() + 1) / 2.0D;
+            int y = world.getHighestBlockYAt((int) Math.floor(x), (int) Math.floor(z)) + 1;
+            CosmeticsBridge.playNearby(new Location(world, x, y, z), "outpost_captured", 64.0D);
+        }
     }
 
     private void updateBossBar(Outpost outpost, List<Player> inside, BarState state) {
