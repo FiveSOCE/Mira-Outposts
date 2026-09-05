@@ -27,19 +27,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MiraOutposts-0.2.1
-          path: build/libs/MiraOutposts-0.2.1.jar
+          name: MiraOutposts-0.2.2
+          path: build/libs/MiraOutposts-0.2.2.jar
           if-no-files-found: error
 
-      - name: Publish v0.2.1 release if missing
+      - name: Publish v0.2.2 release if missing
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view v0.2.1 >/dev/null 2>&1; then
-            gh release create v0.2.1 \
-              build/libs/MiraOutposts-0.2.1.jar \
+          if ! gh release view v0.2.2 >/dev/null 2>&1; then
+            gh release create v0.2.2 \
+              build/libs/MiraOutposts-0.2.2.jar \
               --target "${{ github.sha }}" \
-              --title "MiraOutposts v0.2.1" \
-              --notes "Presentation patch: aligns broadcasts to the shared Mira prefix, removes the legacy [Outpost] label, updates the capture message format and shortens boss-bar titles by removing reward text."
+              --title "MiraOutposts v0.2.2" \
+              --notes "Adds MiraCosmetics capture-complete bursts centered on the outpost for nearby viewers, respecting each viewer's cosmetics visual toggle."
           fi
