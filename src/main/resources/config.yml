@@ -22,3 +22,20 @@ api:
 
 boosters:
   combine-in-player-multiplier: true
+
+# Optional strategic rotation. Only IDs listed here are controlled by the rotation.
+# Individual per-outpost schedules are ignored for rotation-controlled outposts.
+rotation:
+  enabled: false
+  interval-minutes: 180
+  active-count: 2
+  random-order: false
+  outposts: []
+
+# Capture-time functional hooks. The ongoing held reward remains the outpost channel/multiplier.
+# Commands run once when ownership changes and support:
+# %outpost%, %faction%, %faction_id%, %previous_owner%
+rewards:
+  capture-commands:
+    default: []
+    outposts: {}
