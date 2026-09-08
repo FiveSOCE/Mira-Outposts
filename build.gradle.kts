@@ -4,7 +4,7 @@ import java.security.MessageDigest
 plugins { java }
 
 group = "gg.mira"
-version = "0.2.5"
+version = "0.2.6"
 
 repositories {
     mavenCentral()
@@ -50,19 +50,23 @@ val downloadMiraDependencies by tasks.registering {
     }
 }
 
+val paperApiVersion = providers.gradleProperty("paperApiVersion").orElse("1.21.11-R0.1-SNAPSHOT")
+val compileJavaVersion = providers.gradleProperty("compileJavaVersion").map(String::toInt).orElse(21)
+val bytecodeJavaVersion = providers.gradleProperty("bytecodeJavaVersion").map(String::toInt).orElse(21)
+
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:${paperApiVersion.get()}")
     compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.15.3")
     compileOnly(files(miraCoreJar))
     compileOnly(files(miraFactionsJar))
 }
 
-java { toolchain.languageVersion.set(JavaLanguageVersion.of(21)) }
+java { toolchain.languageVersion.set(JavaLanguageVersion.of(compileJavaVersion.get())) }
 
 tasks.withType<JavaCompile>().configureEach {
     dependsOn(downloadMiraDependencies)
     options.encoding = "UTF-8"
-    options.release.set(21)
+    options.release.set(bytecodeJavaVersion.get())
 }
 
 tasks.jar { archiveFileName.set("MiraOutposts-${project.version}.jar") }
