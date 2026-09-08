@@ -1,5 +1,5 @@
 name: MiraOutposts
-version: 0.2.5
+version: 0.2.6
 main: gg.mira.outposts.MiraOutpostsPlugin
 api-version: '1.21'
 author: FiveSOCE
