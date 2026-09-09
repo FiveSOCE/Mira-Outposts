@@ -1,12 +1,14 @@
 # MiraOutposts
 
-MiraOutposts v0.2.5 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
-
 ## Download
 
-[**Download MiraOutposts v0.2.5**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.6/MiraOutposts-0.2.6.jar)
+**Latest compatibility release: v0.2.6**
 
-[View All Releases](https://github.com/FiveSOCE/Mira-Outposts/releases)
+[**Download MiraOutposts-0.2.6.jar**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.6/MiraOutposts-0.2.6.jar)
+
+[View all releases](https://github.com/FiveSOCE/Mira-Outposts/releases)
+
+MiraOutposts v0.2.5 is a FAWE-defined faction capture-event system for the Mira Paper server suite. Administrators create capture regions using a normal FastAsyncWorldEdit cuboid selection, configure the event through GUI menus, start it manually or on a repeating schedule, and players receive live boss-bar capture feedback while inside the active region.
 
 ## Requirements
 
