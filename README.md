@@ -4,7 +4,7 @@ MiraOutposts v0.2.5 is a FAWE-defined faction capture-event system for the Mira 
 
 ## Download
 
-[**Download MiraOutposts v0.2.5**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.5/MiraOutposts-0.2.5.jar)
+[**Download MiraOutposts v0.2.5**](https://github.com/FiveSOCE/Mira-Outposts/releases/download/v0.2.6/MiraOutposts-0.2.6.jar)
 
 [View All Releases](https://github.com/FiveSOCE/Mira-Outposts/releases)
 
